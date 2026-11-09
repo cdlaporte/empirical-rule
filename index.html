@@ -1,0 +1,255 @@
+<title>Empirical Rule Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one centered column — big percentage readout, the bell curve, then two sliders. */
+  :root {
+    --bg: #f6f8f9;
+    --surface: #ffffff;
+    --fg: #17242b;
+    --muted: #5d6e77;
+    --line: #d5dee2;
+    --band: #e3eaed;
+    --accent: #0f7c86;
+    --accent-soft: #bfe3e6;
+    --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #11191d; --surface: #182328; --fg: #e4ecef; --muted: #93a5ad;
+      --line: #2b3a41; --band: #22313a; --accent: #4cc3cc; --accent-soft: #1f5458;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #11191d; --surface: #182328; --fg: #e4ecef; --muted: #93a5ad;
+    --line: #2b3a41; --band: #22313a; --accent: #4cc3cc; --accent-soft: #1f5458;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    padding-block: 32px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+
+  header h1 { margin: 0; font-size: 1.6rem; font-weight: 600; text-wrap: balance; }
+  header p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .readout { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+  .readout .range { font-family: var(--font-mono); font-size: 0.95rem; color: var(--muted); }
+  .readout .pct { font-size: 3rem; font-weight: 600; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .sum { font-family: var(--font-mono); font-size: 0.9rem; color: var(--muted); margin-top: -8px; overflow-wrap: anywhere; }
+  .sum b { color: var(--fg); font-weight: 500; }
+
+  .chart { width: 100%; height: auto; display: block; }
+  .chart text { font-family: var(--font-mono); fill: var(--muted); }
+  .chart .seg { cursor: pointer; transition: fill .15s; }
+  .chart .seg.on { fill: var(--accent-soft); }
+  .chart .seg.off { fill: var(--band); }
+  .chart .seg:hover { opacity: .85; }
+  .chart .pctlabel { font-size: 13px; fill: var(--fg); text-anchor: middle; }
+  .chart .pctlabel.on { fill: var(--accent); font-weight: 500; }
+  .chart .tick { font-size: 12px; text-anchor: middle; }
+  .chart .curve { fill: none; stroke: var(--fg); stroke-width: 2; }
+  .chart .divider { stroke: var(--surface); stroke-width: 2; }
+  .chart .edge { stroke: var(--accent); stroke-width: 2.5; }
+  .chart .axis { stroke: var(--line); stroke-width: 1; }
+
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 28px; }
+  @media (max-width: 520px) { .controls { grid-template-columns: 1fr; } }
+  .control { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .control label { display: flex; justify-content: space-between; font-size: 0.8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .control label output { font-family: var(--font-mono); text-transform: none; letter-spacing: 0; color: var(--fg); font-size: 0.95rem; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .presets span { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-right: 4px; }
+  .presets button {
+    font: inherit; font-family: var(--font-mono); font-size: 0.85rem;
+    padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+  }
+  .presets button:hover { border-color: var(--accent); }
+  .presets button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .presets button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+
+  .note { font-size: 0.85rem; color: var(--muted); margin: 0; max-width: 70ch; }
+</style>
+
+<main>
+  <header>
+    <h1>The Empirical Rule</h1>
+    <p>In a normal distribution, about 68% of values fall within 1 standard deviation (σ) of the mean (μ), 95% within 2, and 99.7% within 3. Pick a start and end point to see how much of the distribution falls in that range.</p>
+  </header>
+
+  <section class="panel" aria-label="Range explorer">
+    <div class="readout">
+      <div>
+        <div class="range" id="rangeText">μ − 1σ to μ + 1σ</div>
+        <div class="pct" id="pct" aria-live="polite">68%</div>
+      </div>
+    </div>
+    <div class="sum" id="sum"></div>
+
+    <svg class="chart" id="chart" viewBox="0 0 720 300" role="img" aria-label="Normal distribution curve divided into standard-deviation bands"></svg>
+
+    <div class="controls">
+      <div class="control">
+        <label for="from">Start <output id="fromOut" for="from">−1σ</output></label>
+        <input type="range" id="from" min="-3" max="3" step="1" value="-1">
+      </div>
+      <div class="control">
+        <label for="to">End <output id="toOut" for="to">+1σ</output></label>
+        <input type="range" id="to" min="-3" max="3" step="1" value="1">
+      </div>
+    </div>
+
+    <div class="presets">
+      <span>Quick picks</span>
+      <button type="button" id="p1" data-a="-1" data-b="1">±1σ</button>
+      <button type="button" id="p2" data-a="-2" data-b="2">±2σ</button>
+      <button type="button" id="p3" data-a="-3" data-b="3">±3σ</button>
+      <button type="button" id="p4" data-a="0" data-b="3">mean → +3σ</button>
+    </div>
+  </section>
+
+  <p class="note">Each band holds a fixed share: 34% between the mean and 1σ, 13.5% between 1σ and 2σ, and 2.35% between 2σ and 3σ, on each side. The remaining 0.15% on each side lies beyond 3σ. Tip: click a band on the curve to start or end the range there.</p>
+</main>
+
+<script>
+(function () {
+  // Empirical-rule share of each 1σ band, keyed by the band's left edge.
+  var BAND = { "-3": 2.35, "-2": 13.5, "-1": 34, "0": 34, "1": 13.5, "2": 2.35 };
+
+  var W = 720, H = 300, PADX = 30, BASE = 250, TOP = 40;
+  var XMIN = -3.6, XMAX = 3.6;
+  function sx(z) { return PADX + (z - XMIN) / (XMAX - XMIN) * (W - 2 * PADX); }
+  function pdf(z) { return Math.exp(-z * z / 2); }           // peak scaled to 1
+  function sy(v) { return BASE - v * (BASE - TOP); }
+
+  var svg = document.getElementById("chart");
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    (parent || svg).appendChild(n);
+    return n;
+  }
+  function areaPath(a, b) {
+    var d = "M" + sx(a) + "," + BASE, steps = 40;
+    for (var i = 0; i <= steps; i++) {
+      var z = a + (b - a) * i / steps;
+      d += " L" + sx(z).toFixed(2) + "," + sy(pdf(z)).toFixed(2);
+    }
+    return d + " L" + sx(b) + "," + BASE + " Z";
+  }
+
+  // Tails beyond ±3σ (never selectable, always muted).
+  el("path", { d: areaPath(XMIN, -3), "class": "seg off", style: "cursor:default" });
+  el("path", { d: areaPath(3, XMAX), "class": "seg off", style: "cursor:default" });
+
+  var segs = {}, labels = {};
+  for (var k = -3; k < 3; k++) {
+    (function (k) {
+      var p = el("path", { d: areaPath(k, k + 1), "class": "seg", tabindex: "-1" });
+      p.addEventListener("click", function () { pickBand(k); });
+      segs[k] = p;
+      var mid = k + 0.5, ly = Math.min(sy(pdf(mid)) - 10, BASE - 14);
+      // Outer bands are thin; lift their labels above the curve.
+      if (Math.abs(mid) > 2) ly = sy(pdf(mid)) - 14;
+      var t = el("text", { x: sx(mid), y: ly, "class": "pctlabel" });
+      t.textContent = BAND[k] + "%";
+      labels[k] = t;
+    })(k);
+  }
+  // Inner band labels sit inside the area for readability.
+  labels[-1].setAttribute("y", BASE - 70); labels[0].setAttribute("y", BASE - 70);
+  labels[-2].setAttribute("y", BASE - 22); labels[1].setAttribute("y", BASE - 22);
+
+  for (var z = -2; z <= 2; z++) el("line", { x1: sx(z), x2: sx(z), y1: sy(pdf(z)), y2: BASE, "class": "divider" });
+
+  var curve = "M" + sx(XMIN) + "," + sy(pdf(XMIN));
+  for (var i = 1; i <= 160; i++) { var zz = XMIN + (XMAX - XMIN) * i / 160; curve += " L" + sx(zz).toFixed(2) + "," + sy(pdf(zz)).toFixed(2); }
+  el("path", { d: curve, "class": "curve" });
+  el("line", { x1: PADX, x2: W - PADX, y1: BASE, y2: BASE, "class": "axis" });
+
+  var edgeA = el("line", { y1: TOP - 14, y2: BASE + 4, "class": "edge" });
+  var edgeB = el("line", { y1: TOP - 14, y2: BASE + 4, "class": "edge" });
+
+  function zLabel(z) { return z === 0 ? "μ" : "μ" + (z > 0 ? "+" : "−") + Math.abs(z) + "σ"; }
+  function zShort(z) { return z === 0 ? "0σ (mean)" : (z > 0 ? "+" : "−") + Math.abs(z) + "σ"; }
+  for (var t = -3; t <= 3; t++) {
+    var tk = el("text", { x: sx(t), y: BASE + 22, "class": "tick" });
+    tk.textContent = zLabel(t);
+  }
+
+  var from = document.getElementById("from"), to = document.getElementById("to");
+  var fromOut = document.getElementById("fromOut"), toOut = document.getElementById("toOut");
+  var pctEl = document.getElementById("pct"), sumEl = document.getElementById("sum"), rangeEl = document.getElementById("rangeText");
+  var presets = document.querySelectorAll(".presets button");
+
+  function fmt(n) { return (Math.round(n * 100) / 100).toString(); }
+
+  function render() {
+    var a = +from.value, b = +to.value;
+    fromOut.textContent = zShort(a); toOut.textContent = zShort(b);
+    var parts = [], total = 0;
+    for (var k = -3; k < 3; k++) {
+      var on = k >= a && k < b;
+      segs[k].setAttribute("class", "seg " + (on ? "on" : "off"));
+      labels[k].setAttribute("class", "pctlabel" + (on ? " on" : ""));
+      if (on) { parts.push(BAND[k]); total += BAND[k]; }
+    }
+    edgeA.setAttribute("x1", sx(a)); edgeA.setAttribute("x2", sx(a));
+    edgeB.setAttribute("x1", sx(b)); edgeB.setAttribute("x2", sx(b));
+    var empty = a === b;
+    edgeB.style.display = empty ? "none" : "";
+    pctEl.textContent = fmt(total) + "%";
+    rangeEl.textContent = empty ? "Start and end are the same point" : zLabel(a).replace("μ", "μ ").replace(/([+−])/, "$1 ") + "  to  " + zLabel(b).replace("μ", "μ ").replace(/([+−])/, "$1 ");
+    sumEl.innerHTML = empty
+      ? "Move the sliders apart to select a range."
+      : parts.map(function (p) { return p + "%"; }).join(" + ") + (parts.length > 1 ? " = <b>" + fmt(total) + "%</b>" : "");
+    presets.forEach(function (btn) { btn.setAttribute("aria-pressed", String(+btn.dataset.a === a && +btn.dataset.b === b)); });
+  }
+
+  // Keep start ≤ end: pushing one slider past the other drags it along.
+  from.addEventListener("input", function () { if (+from.value > +to.value) to.value = from.value; render(); });
+  to.addEventListener("input", function () { if (+to.value < +from.value) from.value = to.value; render(); });
+
+  presets.forEach(function (btn) {
+    btn.addEventListener("click", function () { from.value = btn.dataset.a; to.value = btn.dataset.b; render(); });
+  });
+
+  // Clicking a band extends the range to include it, or shrinks it to just that band if it's already inside.
+  function pickBand(k) {
+    var a = +from.value, b = +to.value;
+    if (k >= a && k < b) { from.value = k; to.value = k + 1; }
+    else if (k < a) { from.value = k; }
+    else { to.value = k + 1; }
+    render();
+  }
+
+  render();
+})();
+</script>
